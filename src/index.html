@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NICO</title>
+<style>
+  /* Fuentes futuristas empaquetadas (funcionan sin internet) */
+  @font-face {
+    font-family: 'Share Tech Mono';
+    src: url('fonts/ShareTechMono.woff2') format('woff2');
+    font-weight: 400; font-display: swap;
+  }
+  @font-face {
+    font-family: 'Orbitron';
+    src: url('fonts/Orbitron-700.woff2') format('woff2');
+    font-weight: 700; font-display: swap;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent; overflow: hidden;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    user-select: none; cursor: default;
+  }
+  #stage {
+    position: relative; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    gap: 8px; padding-bottom: 6px;
+    -webkit-app-region: drag;
+  }
+  .no-drag { -webkit-app-region: no-drag; }
+
+  /* ---- Globo de diálogo (aquí responde NICO) ---- */
+  /* El globo se ancla por su parte de abajo y crece HACIA ARRIBA.
+     Queda DETRÁS del lobo (z-index menor) y las orejas se le enciman -> profundidad.
+     El padding inferior grande deja libre la zona donde entran las puntas. */
+  #bubble {
+    position: absolute; left: -44px; right: -44px; bottom: 250px; top: auto;
+    z-index: 1;
+    max-height: 230px;
+    padding: 12px 14px 40px;
+    background: rgba(6,10,22,.9);
+    border: 1px solid rgba(34,227,255,.55); border-radius: 16px;
+    /* letras blanco neón, fuente cyberpunk de terminal */
+    color: #ffffff;
+    font-family: 'Share Tech Mono', ui-monospace, monospace;
+    font-size: 14px; line-height: 1.5; letter-spacing: .4px;
+    text-shadow: 0 0 4px rgba(180,240,255,.95), 0 0 10px rgba(80,180,255,.55);
+    box-shadow: 0 0 18px rgba(34,227,255,.3), inset 0 0 14px rgba(34,227,255,.1);
+    backdrop-filter: blur(6px); overflow-y: auto; white-space: pre-wrap;
+    opacity: 0; transform: translateY(6px);
+    transition: opacity .25s, transform .25s; pointer-events: none;
+  }
+  #bubble.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  #bubble.think { color: #9fd6ff; }
+
+  /* cursor de máquina de escribir */
+  .cursor {
+    display: inline-block; width: .5em; height: 1.05em;
+    background: #d6f6ff; box-shadow: 0 0 6px #7fe0ff, 0 0 12px #34b4ff;
+    margin-left: 2px; vertical-align: -2px; border-radius: 1px;
+    animation: caret .8s steps(1) infinite;
+  }
+  @keyframes caret { 0%,50%{opacity:1} 51%,100%{opacity:0} }
+  #bubble::-webkit-scrollbar { width: 6px; }
+  #bubble::-webkit-scrollbar-thumb { background: rgba(34,227,255,.3); border-radius: 6px; }
+
+  /* ---- Zona del lobo (contenedor del globo + avatar) ---- */
+  #hero {
+    position: relative; width: 232px; margin-top: auto;
+    display: flex; justify-content: center;
+  }
+
+  /* ---- Avatar (holograma) ---- */
+  #avatar {
+    position: relative; width: 100%; z-index: 2;   /* el lobo va por delante del globo */
+    animation: float 5s ease-in-out infinite;
+  }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+  /* contenedor holográfico: aquí vive el halo que respira */
+  .holo { position: relative; width: 100%; animation: breathe 3.6s ease-in-out infinite; }
+  @keyframes breathe {
+    0%,100% { filter: drop-shadow(0 0 4px rgba(122,92,255,.5)) drop-shadow(0 0 12px rgba(34,150,255,.4)); }
+    50%     { filter: drop-shadow(0 0 12px rgba(160,90,255,.9)) drop-shadow(0 0 26px rgba(34,180,255,.6)); }
+  }
+
+  /* imagen base: semitransparente (holograma) + parpadeo + glitch ocasional */
+  #avatar .base {
+    display: block; width: 100%; height: auto;
+    opacity: .78;
+    animation: flicker 8s steps(1,end) infinite, glitch 7s ease-in-out infinite;
+  }
+  @keyframes flicker {
+    0%, 90%, 100% { opacity: .78; }
+    91% { opacity: .5; }  92% { opacity: .8; }
+    93% { opacity: .45; } 94% { opacity: .8; }  95% { opacity: .6; }
+  }
+  @keyframes glitch {
+    0%, 88%, 100% { transform: translate(0,0); filter: none; }
+    89% { transform: translate(-3px,1px); filter: hue-rotate(70deg) saturate(1.4); }
+    90% { transform: translate(4px,-1px); filter: hue-rotate(-50deg); }
+    91% { transform: translate(-2px,0); }
+    92% { transform: translate(2px,1px); filter: hue-rotate(35deg); }
+    93% { transform: translate(0,0); filter: none; }
+  }
+
+  /* capas holográficas, recortadas a la silueta del lobo */
+  #avatar .scan, #avatar .sweep, #avatar .glitchlayer {
+    position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+    -webkit-mask: url(nico.png) center/contain no-repeat;
+            mask: url(nico.png) center/contain no-repeat;
+  }
+  /* líneas de escaneo finas */
+  #avatar .scan {
+    background: repeating-linear-gradient(0deg,
+      rgba(150,230,255,.11) 0 1px, transparent 1px 4px);
+    opacity: .55; animation: scanmove 5s linear infinite;
+  }
+  @keyframes scanmove { from { background-position: 0 0; } to { background-position: 0 4px; } }
+  /* barra de luz que baja */
+  #avatar .sweep {
+    background-image: linear-gradient(180deg, transparent 42%, rgba(190,240,255,.32) 50%, transparent 58%);
+    background-size: 100% 220%; background-repeat: no-repeat;
+    animation: sweep 5.5s ease-in-out infinite;
+  }
+  @keyframes sweep {
+    0% { background-position: 0 -60%; opacity: 0; }
+    12% { opacity: .85; } 88% { opacity: .85; }
+    100% { background-position: 0 160%; opacity: 0; }
+  }
+  /* clon desfasado para el glitch ocasional */
+  #avatar .glitchlayer {
+    background: url(nico.png) center/contain no-repeat;
+    opacity: 0; animation: glitchclone 7s infinite;
+  }
+  @keyframes glitchclone {
+    0%, 88%, 100% { opacity: 0; transform: translate(0,0); clip-path: inset(0 0 0 0); filter: none; }
+    89% { opacity: .6; transform: translate(-7px,0); filter: hue-rotate(160deg); clip-path: inset(18% 0 56% 0); }
+    91% { opacity: .55; transform: translate(7px,0); filter: hue-rotate(80deg); clip-path: inset(58% 0 14% 0); }
+    92.5% { opacity: 0; }
+  }
+  .eyeglow {
+    position: absolute; width: 22%; aspect-ratio: 1;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,200,90,.9) 0%, rgba(255,140,20,.5) 38%, rgba(255,120,0,0) 68%);
+    mix-blend-mode: screen; pointer-events: none;
+    animation: eyepulse 2.4s ease-in-out infinite;
+  }
+  .eyeglow.left  { left: 30.5%; top: 52.7%; }
+  .eyeglow.right { left: 69.4%; top: 52.2%; }
+  @keyframes eyepulse {
+    0%,100% { opacity:.35; transform:translate(-50%,-50%) scale(.9); }
+    50%     { opacity:.9;  transform:translate(-50%,-50%) scale(1.12); }
+  }
+  #avatar.speaking { animation: talkbob .5s ease-in-out infinite; }
+  @keyframes talkbob { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(-2px) scale(1.02)} }
+
+  /* ---- Gracias / animaciones aleatorias (botón 🎲) ---- */
+  #avatar.fx-shake  { animation: fxShake .55s ease; }
+  #avatar.fx-spin   { animation: fxSpin .8s ease-in-out; }
+  #avatar.fx-jump   { animation: fxJump .65s ease; }
+  #avatar.fx-wobble { animation: fxWobble .8s ease; }
+  #avatar.fx-zoom   { animation: fxZoom .5s ease; }
+  #avatar.fx-nod    { animation: fxNod .7s ease; }
+  @keyframes fxShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-9px) rotate(-4deg)} 40%{transform:translateX(9px) rotate(4deg)} 60%{transform:translateX(-6px) rotate(-2deg)} 80%{transform:translateX(6px)} }
+  @keyframes fxSpin  { to { transform: rotate(360deg); } }
+  @keyframes fxJump  { 0%,100%{transform:translateY(0) scaleY(1)} 30%{transform:translateY(-28px) scaleY(1.06)} 55%{transform:translateY(0) scaleY(.9)} 72%{transform:translateY(-9px) scaleY(1.02)} }
+  @keyframes fxWobble{ 0%,100%{transform:rotate(0)} 25%{transform:rotate(-9deg)} 50%{transform:rotate(7deg)} 75%{transform:rotate(-4deg)} }
+  @keyframes fxZoom  { 0%,100%{transform:scale(1)} 45%{transform:scale(1.16)} }
+  @keyframes fxNod   { 0%,100%{transform:translateY(0) rotate(0)} 30%{transform:translateY(5px) rotate(4deg)} 65%{transform:translateY(0) rotate(-3deg)} }
+  #avatar.speaking .holo { animation-duration: 1.4s; }
+  #avatar.speaking .sweep { animation-duration: 1.8s; }
+  #avatar.speaking .eyeglow { animation-duration: .9s; }
+
+  /* ---- Barra para escribirle a NICO ---- */
+  #inputbar {
+    display: flex; gap: 6px; width: 288px;
+    background: rgba(10,15,30,.72);
+    border: 1px solid rgba(34,227,255,.35); border-radius: 999px;
+    padding: 5px 6px 5px 14px; backdrop-filter: blur(6px);
+  }
+  #q {
+    flex: 1; border: none; outline: none; background: transparent;
+    color: #e7f2ff; font-size: 13px; font-family: inherit;
+  }
+  #q::placeholder { color: #6f8fc0; }
+  #sendBtn {
+    width: 30px; height: 30px; border: none; border-radius: 50%; cursor: pointer;
+    background: linear-gradient(135deg, #22e3ff, #7a5cff); color: #04121a;
+    font-size: 14px; font-weight: 700; display: grid; place-items: center;
+    transition: transform .1s, filter .15s;
+  }
+  #sendBtn:hover { filter: brightness(1.1); }
+  #sendBtn:active { transform: scale(.92); }
+  #sendBtn:disabled { opacity: .5; cursor: default; }
+
+  /* ---- Controles ---- */
+  #controls {
+    display: flex; gap: 8px; padding: 5px 8px;
+    background: rgba(10,15,30,.7);
+    border: 1px solid rgba(122,92,255,.4); border-radius: 999px;
+    opacity: 0; transition: opacity .2s;
+  }
+  #stage:hover #controls { opacity: 1; }
+  #controls button {
+    width: 28px; height: 28px; border: none; border-radius: 50%;
+    background: rgba(34,227,255,.12); color: #22e3ff;
+    font-size: 13px; cursor: pointer; display: grid; place-items: center;
+    transition: background .15s, color .15s, transform .1s;
+  }
+  #controls button:hover { background: #22e3ff; color: #04121a; transform: translateY(-2px); }
+  #controls button.active { background: #ffcf47; color: #1a1400; }
+  #controls button.danger:hover { background: #ff4d6d; color: #fff; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="hero">
+      <div id="bubble" class="no-drag"></div>
+      <div id="avatar">
+        <div class="holo">
+          <img src="nico.png" class="base" alt="NICO" />
+          <div class="scan"></div>
+          <div class="sweep"></div>
+          <div class="glitchlayer"></div>
+        </div>
+        <span class="eyeglow left"></span>
+        <span class="eyeglow right"></span>
+      </div>
+    </div>
+
+    <div id="inputbar" class="no-drag">
+      <input id="q" type="text" placeholder="Escríbele a NICO…" autocomplete="off" />
+      <button id="sendBtn" title="Enviar">➤</button>
+    </div>
+
+    <div id="controls" class="no-drag">
+      <button id="btnMute" title="Silenciar / activar voz">🔊</button>
+      <button id="btnMin" title="Minimizar">–</button>
+      <button id="btnFun" title="¡Sorpréndeme!">🎲</button>
+      <button id="btnPin" class="active" title="Fijar siempre encima">📌</button>
+      <button id="btnGhost" title="Modo fantasma (dejar pasar clics)">👻</button>
+      <button id="btnClose" class="danger" title="Cerrar NICO">✕</button>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
