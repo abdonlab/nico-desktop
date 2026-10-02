@@ -302,6 +302,46 @@ ipcMain.on('nico:minimize', () => {
 ipcMain.on('nico:toggle-pin', (_e, pinned) => { if (avatarWin) avatarWin.setAlwaysOnTop(!!pinned, 'screen-saver'); });
 ipcMain.on('nico:click-through', (_e, ignore) => { if (avatarWin) avatarWin.setIgnoreMouseEvents(!!ignore, { forward: true }); });
 
+// Voz del sistema en Mac con 'say'. Detecta y usa una voz de HOMBRE en español
+// (prefiere la "mejorada"/enhanced). Puedes forzar una con MAC_VOICE en la config.
+let sayProc = null;
+let RESOLVED_MAC_VOICE; // undefined = sin resolver
+function resolveMacVoice() {
+  if (RESOLVED_MAC_VOICE !== undefined) return RESOLVED_MAC_VOICE;
+  if (cfg.MAC_VOICE) { RESOLVED_MAC_VOICE = String(cfg.MAC_VOICE); console.log('Voz NICO (config):', RESOLVED_MAC_VOICE); return RESOLVED_MAC_VOICE; }
+  try {
+    const out = require('child_process').execSync('say -v "?"', { encoding: 'utf8' });
+    const voices = [];
+    out.split('\n').forEach(l => {
+      const mm = l.match(/^(.+?)\s{2,}([a-z]{2}_[A-Z]{2})/);
+      if (mm) voices.push({ name: mm[1].trim(), lang: mm[2] });
+    });
+    const es = voices.filter(v => /^es_/.test(v.lang));
+    const pool = es.length ? es : voices;
+    const MALE = /(juan|jorge|diego|carlos|enrique|miguel|pablo)/i;
+    const male = pool.filter(v => MALE.test(v.name));
+    const mp = male.length ? male : pool;
+    const pick = mp.find(v => /(mejorada|enhanced|premium|siri)/i.test(v.name))
+              || mp.find(v => /es_MX/.test(v.lang))
+              || mp[0] || null;
+    RESOLVED_MAC_VOICE = pick ? pick.name : null;
+    console.log('Voz NICO (say):', RESOLVED_MAC_VOICE || '(por defecto del sistema)');
+  } catch (err) { console.error('resolveMacVoice:', err.message); RESOLVED_MAC_VOICE = null; }
+  return RESOLVED_MAC_VOICE;
+}
+ipcMain.on('nico:say', (e, text) => {
+  if (process.platform !== 'darwin') return;
+  try { if (sayProc) sayProc.kill('SIGTERM'); } catch (err) {}
+  const voice = resolveMacVoice();
+  const args = voice ? ['-v', voice, String(text || '')] : [String(text || '')];
+  try {
+    sayProc = spawn('say', args);
+    sayProc.on('close', () => { sayProc = null; try { e.sender.send('nico:say-done'); } catch (_) {} });
+    sayProc.on('error', () => { sayProc = null; try { e.sender.send('nico:say-done'); } catch (_) {} });
+  } catch (err) { console.error('say error:', err.message); try { e.sender.send('nico:say-done'); } catch (_) {} }
+});
+ipcMain.on('nico:say-stop', () => { try { if (sayProc) sayProc.kill('SIGTERM'); } catch (err) {} sayProc = null; });
+
 app.whenReady().then(() => {
   createAvatarWindow();   // muestra el avatar de inmediato
   createTray();           // icono en la bandeja para recuperarlo tras minimizar

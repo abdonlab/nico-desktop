@@ -79,8 +79,12 @@ function pickSpanishVoice() {
       || mp.find(x => /es(-|_)MX/i.test(x.lang))
       || mp[0] || pool[0] || null;
 }
+const USE_SAY = !!(window.nico && window.nico.platform === 'darwin' && window.nico.say);
+
 function ttsSpeak(text) {
-  if (!voiceOn || !('speechSynthesis' in window)) return null;
+  if (!voiceOn) return null;
+  if (USE_SAY) { window.nico.say(text); return 'say'; }   // Mac: voz del sistema (la que elegiste en Ajustes)
+  if (!('speechSynthesis' in window)) return null;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const v = pickSpanishVoice();
@@ -95,8 +99,9 @@ function speak(text) {
   typeBubble(text);   // sale letra por letra
   startTalking();
   const u = ttsSpeak(text);
-  if (u) { u.onend = stopTalking; u.onerror = stopTalking; }
-  else { setTimeout(stopTalking, Math.min(9000, 1400 + text.length * 45)); }
+  if (u && u !== 'say') { u.onend = stopTalking; u.onerror = stopTalking; }
+  else if (!u) { setTimeout(stopTalking, Math.min(9000, 1400 + text.length * 45)); }
+  // con 'say' (Mac), la animación para cuando el sistema termina de hablar (onSayDone)
 }
 
 // -------- Gracia aleatoria (botón 🎲) --------
@@ -151,7 +156,10 @@ let pinned = true, ghost = false;
 btnMute.addEventListener('click', () => {
   voiceOn = !voiceOn;
   btnMute.textContent = voiceOn ? '🔊' : '🔇';
-  if (!voiceOn && 'speechSynthesis' in window) speechSynthesis.cancel();
+  if (!voiceOn) {
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    if (window.nico && window.nico.sayStop) window.nico.sayStop();
+  }
 });
 
 btnMin.addEventListener('click', () => window.nico.minimize());
@@ -175,6 +183,7 @@ if ('speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = () => {};
   speechSynthesis.getVoices();
 }
+if (window.nico && window.nico.onSayDone) window.nico.onSayDone(() => stopTalking());
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => speak('¡Hola! Soy NICO. Escríbeme abajo y te respondo.'), 700);
   q.focus();
