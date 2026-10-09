@@ -12,5 +12,11 @@ contextBridge.exposeInMainWorld('nico', {
   platform: process.platform,
   say: (text) => ipcRenderer.send('nico:say', text),
   sayStop: () => ipcRenderer.send('nico:say-stop'),
-  onSayDone: (cb) => ipcRenderer.on('nico:say-done', cb)
+  onSayDone: (cb) => ipcRenderer.on('nico:say-done', cb),
+  // Configuración (engranaje ⚙️)
+  getSettings: () => ipcRenderer.invoke('nico:get-settings'),
+  saveSettings: (s) => ipcRenderer.invoke('nico:save-settings', s),
+  // Actualizaciones (GitHub)
+  checkUpdate: () => ipcRenderer.invoke('nico:check-update'),
+  openUpdate: (url) => ipcRenderer.invoke('nico:open-update', url)
 });

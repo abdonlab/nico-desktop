@@ -143,4 +143,7 @@ async function retrieve(query, cfg) {
   return { context, sources };
 }
 
-module.exports = { embedText, cosineSim, loadKnowledge, isReady, retrieve };
+// Olvida el modelo de embeddings detectado (para re-detectar si cambió la API key).
+function resetEmbedModel() { RESOLVED_EMBED_GEMINI = null; }
+
+module.exports = { embedText, cosineSim, loadKnowledge, isReady, retrieve, resetEmbedModel };

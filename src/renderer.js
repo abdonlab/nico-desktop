@@ -178,6 +178,83 @@ btnGhost.addEventListener('click', () => {
 });
 btnClose.addEventListener('click', () => window.nico.quit());
 
+// -------- Configuración (engranaje ⚙️) --------
+const btnCfg    = document.getElementById('btnCfg');
+const cfgPanel  = document.getElementById('cfgPanel');
+const segGemini = document.getElementById('segGemini');
+const segOllama = document.getElementById('segOllama');
+const cfgGemini = document.getElementById('cfgGemini');
+const cfgOllama = document.getElementById('cfgOllama');
+const cfgKey    = document.getElementById('cfgKey');
+const cfgGModel = document.getElementById('cfgGModel');
+const cfgOModel = document.getElementById('cfgOModel');
+const cfgOUrl   = document.getElementById('cfgOUrl');
+const cfgOk     = document.getElementById('cfgOk');
+const cfgCancel = document.getElementById('cfgCancel');
+const cfgUpdate = document.getElementById('cfgUpdate');
+const cfgUpdMsg = document.getElementById('cfgUpdMsg');
+
+let cfgProvider = 'gemini';
+function setCfgProvider(p) {
+  cfgProvider = (p === 'ollama') ? 'ollama' : 'gemini';
+  segGemini.classList.toggle('sel', cfgProvider === 'gemini');
+  segOllama.classList.toggle('sel', cfgProvider === 'ollama');
+  cfgGemini.classList.toggle('cfg-hidden', cfgProvider !== 'gemini');
+  cfgOllama.classList.toggle('cfg-hidden', cfgProvider !== 'ollama');
+}
+
+async function openCfg() {
+  let s = {};
+  try { s = (window.nico.getSettings && await window.nico.getSettings()) || {}; } catch (e) {}
+  cfgKey.value    = s.geminiKey   || '';
+  cfgGModel.value = s.geminiModel || '';
+  cfgOModel.value = s.ollamaModel || '';
+  cfgOUrl.value   = s.ollamaUrl   || '';
+  cfgUpdMsg.textContent = '';
+  setCfgProvider(s.provider || 'gemini');
+  cfgPanel.classList.add('show');
+}
+function closeCfg() { cfgPanel.classList.remove('show'); }
+
+btnCfg.addEventListener('click', openCfg);
+segGemini.addEventListener('click', () => setCfgProvider('gemini'));
+segOllama.addEventListener('click', () => setCfgProvider('ollama'));
+cfgCancel.addEventListener('click', closeCfg);
+cfgPanel.addEventListener('click', (e) => { if (e.target === cfgPanel) closeCfg(); });
+
+cfgOk.addEventListener('click', async () => {
+  const data = {
+    provider: cfgProvider,
+    geminiKey: cfgKey.value.trim(),
+    geminiModel: cfgGModel.value.trim(),
+    ollamaModel: cfgOModel.value.trim(),
+    ollamaUrl: cfgOUrl.value.trim()
+  };
+  cfgOk.disabled = true;
+  try { await window.nico.saveSettings(data); } catch (e) {}
+  cfgOk.disabled = false;
+  closeCfg();
+  const quien = cfgProvider === 'ollama' ? 'Ollama (local)' : 'Gemini (nube)';
+  showBubble('✓ Configuración guardada — ahora uso ' + quien);
+  hideTimer = setTimeout(hideBubble, 2600);
+});
+
+// Botón de actualizaciones (se conecta a GitHub)
+cfgUpdate.addEventListener('click', async () => {
+  cfgUpdMsg.textContent = 'Buscando en GitHub…';
+  let r = {};
+  try { r = await window.nico.checkUpdate(); } catch (e) { r = { ok: false }; }
+  if (!r || !r.ok) { cfgUpdMsg.textContent = 'No pude consultar GitHub. Revisa tu internet.'; return; }
+  if (r.newer) {
+    cfgUpdMsg.innerHTML = '¡Hay una versión nueva (' + r.latest + ')! Tienes la ' + r.current +
+      '. <span id="cfgUpdOpen">Abrir en GitHub</span>';
+    const o = document.getElementById('cfgUpdOpen');
+    if (o) o.addEventListener('click', () => window.nico.openUpdate(r.url));
+  } else {
+    cfgUpdMsg.textContent = 'Ya tienes la última versión (' + r.current + ').';
+  }
+});
+
 // -------- Arranque --------
 if ('speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = () => {};

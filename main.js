@@ -20,6 +20,21 @@ let cfg = {};
   console.error('No se encontró nico.config.js');
 })();
 
+// ---- Ajustes editables desde el engranaje ⚙️ de la app ----
+// Se guardan en la carpeta de datos del usuario (userData) y SOBREVIVEN a las
+// actualizaciones. Lo que el usuario elige aquí tiene prioridad sobre nico.config.js.
+function settingsPath() { return path.join(app.getPath('userData'), 'nico-settings.json'); }
+function loadUserSettings() {
+  try { const p = settingsPath(); if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8')) || {}; }
+  catch (e) { console.error('No pude leer ajustes:', e.message); }
+  return {};
+}
+function applyUserSettings() {
+  const s = loadUserSettings();
+  if (s && typeof s === 'object') Object.assign(cfg, s);
+  return s;
+}
+
 let avatarWin = null;
 let tray = null;
 
@@ -253,7 +268,7 @@ async function askOllama(messages, systemPrompt) {
 async function askGemini(messages, systemPrompt) {
   const key = (cfg.GEMINI_API_KEY || '').trim();
   if (!key || key.includes('PEGA_AQUI')) {
-    return { ok: false, reply: 'Falta tu API key de Gemini. Ábrela en nico.config.js y pégala.' };
+    return { ok: false, reply: 'Falta tu API key de Gemini. Ábre el engranaje ⚙️ y pégala.' };
   }
 
   const model = await resolveModel(key);
@@ -278,7 +293,7 @@ async function askGemini(messages, systemPrompt) {
       const t = await r.text();
       console.error('Gemini error', r.status, t);
       if (r.status === 404) { RESOLVED_MODEL = null; return { ok: false, reply: 'No encontré un modelo válido para tu key. Reinicia NICO e intenta de nuevo.' }; }
-      if (r.status === 400 || r.status === 403) return { ok: false, reply: 'Tu API key parece inválida. Revísala en nico.config.js.' };
+      if (r.status === 400 || r.status === 403) return { ok: false, reply: 'Tu API key parece inválida. Revísala en el engranaje ⚙️.' };
       if (r.status === 429) return { ok: false, reply: 'Límite de uso alcanzado; espera un momento.' };
       return { ok: false, reply: `Error de la API (${r.status}).` };
     }
@@ -301,6 +316,61 @@ ipcMain.on('nico:minimize', () => {
 });
 ipcMain.on('nico:toggle-pin', (_e, pinned) => { if (avatarWin) avatarWin.setAlwaysOnTop(!!pinned, 'screen-saver'); });
 ipcMain.on('nico:click-through', (_e, ignore) => { if (avatarWin) avatarWin.setIgnoreMouseEvents(!!ignore, { forward: true }); });
+
+// ---- Configuración desde el engranaje ⚙️ ----
+ipcMain.handle('nico:get-settings', () => {
+  const key = String(cfg.GEMINI_API_KEY || '');
+  return {
+    provider: (cfg.PROVIDER || 'gemini').toLowerCase(),
+    geminiKey: key.includes('PEGA_AQUI') ? '' : key,
+    geminiModel: cfg.MODEL || 'gemini-2.0-flash',
+    ollamaModel: cfg.OLLAMA_MODEL || 'qwen2.5:7b-instruct',
+    ollamaUrl: cfg.OLLAMA_URL || 'http://localhost:11434'
+  };
+});
+ipcMain.handle('nico:save-settings', (_e, s) => {
+  s = s || {};
+  const provider = (String(s.provider).toLowerCase() === 'ollama') ? 'ollama' : 'gemini';
+  const next = {
+    PROVIDER: provider,
+    GEMINI_API_KEY: String(s.geminiKey || '').trim(),
+    MODEL: String(s.geminiModel || '').trim() || 'gemini-2.0-flash',
+    OLLAMA_MODEL: String(s.ollamaModel || '').trim() || 'qwen2.5:7b-instruct',
+    OLLAMA_URL: String(s.ollamaUrl || '').trim() || 'http://localhost:11434'
+  };
+  try {
+    const dir = app.getPath('userData');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(settingsPath(), JSON.stringify(Object.assign(loadUserSettings(), next), null, 2));
+  } catch (e) { console.error('No pude guardar ajustes:', e.message); return { ok: false, error: e.message }; }
+  Object.assign(cfg, next);
+  RESOLVED_MODEL = null;
+  try { rag.resetEmbedModel(); } catch (_) {}
+  if (provider === 'ollama') ensureOllama();
+  console.log('Ajustes guardados. Proveedor:', provider);
+  return { ok: true };
+});
+
+// ---- Actualizaciones: consulta tu repo de GitHub ----
+function cmpVersion(a, b) {
+  const pa = String(a || '0').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b || '0').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d > 0 ? 1 : -1; }
+  return 0;
+}
+ipcMain.handle('nico:check-update', async () => {
+  const repo = cfg.UPDATE_REPO || 'abdonlab/nico-desktop';
+  try {
+    const r = await fetch(`https://raw.githubusercontent.com/${repo}/main/package.json?t=${Date.now()}`);
+    if (!r.ok) return { ok: false, error: 'GitHub ' + r.status };
+    const remote = await r.json();
+    const current = app.getVersion();
+    return { ok: true, current, latest: remote.version, newer: cmpVersion(remote.version, current) > 0, url: `https://github.com/${repo}` };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('nico:open-update', (_e, url) => {
+  try { require('electron').shell.openExternal(url || `https://github.com/${cfg.UPDATE_REPO || 'abdonlab/nico-desktop'}`); } catch (e) {}
+});
 
 // Voz del sistema en Mac con 'say'. Detecta y usa una voz de HOMBRE en español
 // (prefiere la "mejorada"/enhanced). Puedes forzar una con MAC_VOICE en la config.
@@ -343,6 +413,7 @@ ipcMain.on('nico:say', (e, text) => {
 ipcMain.on('nico:say-stop', () => { try { if (sayProc) sayProc.kill('SIGTERM'); } catch (err) {} sayProc = null; });
 
 app.whenReady().then(() => {
+  applyUserSettings();    // ajustes del engranaje ⚙️ (si existen) pisan la config base
   createAvatarWindow();   // muestra el avatar de inmediato
   createTray();           // icono en la bandeja para recuperarlo tras minimizar
   ensureOllama();         // y en paralelo levanta Ollama si hace falta

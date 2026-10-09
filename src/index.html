@@ -214,6 +214,61 @@
   #controls button:hover { background: #22e3ff; color: #04121a; transform: translateY(-2px); }
   #controls button.active { background: #ffcf47; color: #1a1400; }
   #controls button.danger:hover { background: #ff4d6d; color: #fff; }
+
+  /* ---- Panel de configuración (engranaje ⚙️) ---- */
+  #cfgPanel {
+    position: absolute; inset: 0; z-index: 10;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(2,6,16,.72); backdrop-filter: blur(4px);
+  }
+  #cfgPanel.show { display: flex; }
+  #cfgCard {
+    width: 272px; max-height: 94%; overflow-y: auto;
+    background: rgba(10,15,30,.98);
+    border: 1px solid rgba(34,227,255,.5); border-radius: 16px;
+    box-shadow: 0 0 22px rgba(34,227,255,.3);
+    padding: 14px; color: #e7f2ff;
+  }
+  #cfgCard h3 {
+    font-family: 'Orbitron', sans-serif; font-size: 14px; color: #22e3ff;
+    margin-bottom: 12px; text-align: center; letter-spacing: .5px;
+  }
+  .cfg-row { margin-bottom: 10px; }
+  .cfg-row label { display: block; font-size: 11px; color: #9fd6ff; margin-bottom: 4px; }
+  .cfg-row input {
+    width: 100%; padding: 8px 9px; font-size: 12px;
+    background: rgba(6,10,22,.9); color: #e7f2ff;
+    border: 1px solid rgba(34,227,255,.35); border-radius: 8px; outline: none;
+    font-family: 'Share Tech Mono', ui-monospace, monospace;
+  }
+  .cfg-row input:focus { border-color: rgba(34,227,255,.8); }
+  .cfg-seg { display: flex; gap: 6px; }
+  .cfg-seg button {
+    flex: 1; padding: 9px 4px; font-size: 11.5px; cursor: pointer;
+    background: rgba(34,227,255,.1); color: #22e3ff;
+    border: 1px solid rgba(34,227,255,.35); border-radius: 8px;
+    transition: background .15s, color .15s;
+  }
+  .cfg-seg button.sel { background: #22e3ff; color: #04121a; font-weight: 700; }
+  .cfg-hidden { display: none; }
+  .cfg-div { height: 1px; background: rgba(122,92,255,.3); margin: 12px 0 10px; }
+  #cfgUpdate {
+    width: 100%; padding: 9px; font-size: 12px; cursor: pointer;
+    background: rgba(122,92,255,.18); color: #cabcff;
+    border: 1px solid rgba(122,92,255,.55); border-radius: 8px;
+  }
+  #cfgUpdate:hover { background: rgba(122,92,255,.3); }
+  #cfgUpdMsg { font-size: 11px; margin-top: 7px; line-height: 1.45; color: #9fd6ff; }
+  #cfgUpdOpen { color: #22e3ff; cursor: pointer; text-decoration: underline; font-weight: 700; }
+  .cfg-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .cfg-actions button {
+    flex: 1; padding: 9px; font-size: 13px; font-weight: 700; cursor: pointer;
+    border: none; border-radius: 10px;
+  }
+  #cfgOk { background: linear-gradient(135deg,#22e3ff,#7a5cff); color: #04121a; }
+  #cfgOk:active { transform: scale(.97); }
+  #cfgCancel { background: rgba(255,255,255,.1); color: #cfe6ff; }
+  #cfgHint { font-size: 10px; color: #6f8fc0; margin-top: 9px; line-height: 1.4; text-align: center; }
 </style>
 </head>
 <body>
@@ -239,11 +294,62 @@
 
     <div id="controls" class="no-drag">
       <button id="btnMute" title="Silenciar / activar voz">🔊</button>
+      <button id="btnCfg" title="Configuración">⚙️</button>
       <button id="btnMin" title="Minimizar">–</button>
       <button id="btnFun" title="¡Sorpréndeme!">🎲</button>
       <button id="btnPin" class="active" title="Fijar siempre encima">📌</button>
       <button id="btnGhost" title="Modo fantasma (dejar pasar clics)">👻</button>
       <button id="btnClose" class="danger" title="Cerrar NICO">✕</button>
+    </div>
+
+    <!-- Panel de configuración (se abre con el engranaje ⚙️) -->
+    <div id="cfgPanel" class="no-drag">
+      <div id="cfgCard">
+        <h3>⚙️ Configuración de NICO</h3>
+
+        <div class="cfg-row">
+          <label>¿Qué cerebro usa NICO?</label>
+          <div class="cfg-seg">
+            <button type="button" id="segGemini" data-p="gemini">Gemini (nube)</button>
+            <button type="button" id="segOllama" data-p="ollama">Ollama (local)</button>
+          </div>
+        </div>
+
+        <div id="cfgGemini">
+          <div class="cfg-row">
+            <label>API Key de Gemini</label>
+            <input id="cfgKey" type="password" placeholder="pega aquí tu API key" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="cfg-row">
+            <label>Modelo</label>
+            <input id="cfgGModel" type="text" placeholder="gemini-2.0-flash" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+
+        <div id="cfgOllama">
+          <div class="cfg-row">
+            <label>Modelo local</label>
+            <input id="cfgOModel" type="text" placeholder="qwen2.5:7b-instruct" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="cfg-row">
+            <label>Dirección de Ollama</label>
+            <input id="cfgOUrl" type="text" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+
+        <div class="cfg-div"></div>
+        <div class="cfg-row">
+          <label>Actualizaciones</label>
+          <button type="button" id="cfgUpdate">🔄 Buscar en GitHub</button>
+          <div id="cfgUpdMsg"></div>
+        </div>
+
+        <div class="cfg-actions">
+          <button type="button" id="cfgCancel">Cancelar</button>
+          <button type="button" id="cfgOk">Aceptar</button>
+        </div>
+        <div id="cfgHint">Se guarda al instante y NICO lo usa enseguida.</div>
+      </div>
     </div>
   </div>
 
