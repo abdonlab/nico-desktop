@@ -1,0 +1,13 @@
+# Dependencias e instaladores (se regeneran con npm install / npm run dist)
+node_modules/
+dist/
+*.zip
+
+# Índice del RAG (se regenera con: npm run indexar)
+conocimiento.json
+
+# Config con tu API key (cada quien pone la suya; usa nico.config.example.js)
+nico.config.js
+
+# Sistema
+.DS_Store
