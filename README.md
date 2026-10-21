@@ -1,176 +1,151 @@
 # NICO — App de escritorio con IA 🐺
 
 Aplicación de escritorio para **NICO**, la IA nicolaita (UMSNH / Tianguis de la Ciencia 2026).
-Tiene la **inteligencia artificial integrada**: escribes en el chat y NICO te responde ahí mismo,
-usando la API de **Gemini**. Incluye un avatar (lobo neón) que flota en el escritorio, reacciona
-y dice las respuestas en voz alta.
+Es un **avatar (lobo neón) que flota en el escritorio** con el **chat integrado**: le escribes
+abajo y responde ahí mismo, con voz. Todo vive dentro de la app (no usa el navegador ni Streamlit).
 
-No usa Streamlit ni ventanas del navegador: todo vive dentro de la app.
+Desde la versión **1.3.0** puedes elegir **muchos cerebros** de IA y cambiar entre ellos desde
+el engranaje ⚙️, sin tocar archivos.
+
+## Cerebros disponibles
+**☁️ En la nube (internet):** Gemini (Google) · OpenAI (ChatGPT) · Claude (Anthropic) ·
+DeepSeek · OpenRouter (cientos de modelos) · Perplexity · *Otro (compatible con OpenAI)*
+**💻 En tu computadora (local, sin costo):** Ollama · LM Studio · *Otro local (compatible con OpenAI)*
 
 ## Requisitos
-- [Node.js](https://nodejs.org) 18 o superior (incluye `npm`).
-- Una **API key de Gemini** (gratis en https://aistudio.google.com/apikey).
+- [Node.js](https://nodejs.org) **22 LTS o superior** (incluye `npm`).
+  Con Node viejo puedes *probar* con `npm start`, pero para **crear el instalador** (`npm run dist`)
+  hace falta Node 22.
+- Una API key del servicio que quieras usar (p. ej. Gemini, gratis en https://aistudio.google.com/apikey),
+  **o** un modelo local (Ollama / LM Studio) si no quieres depender de internet.
 
-## Configuración (¡importante!)
-Abre el archivo **`nico.config.js`** y pega tu API key:
+## Descargar el proyecto
+**Opción A — ZIP (lo más simple):** entra a https://github.com/abdonlab/nico-desktop →
+botón verde **Code** → **Download ZIP** → descomprime.
 
-```js
-GEMINI_API_KEY: 'PEGA_AQUI_TU_API_KEY',
-MODEL: 'gemini-2.0-flash',   // o el modelo que uses en nico-chat
-```
-
-Ahí mismo puedes ajustar la personalidad de NICO (`SYSTEM_PROMPT`).
-> No compartas ese archivo con tu key en internet ni en GitHub.
-
-## Cómo ejecutarlo
-Desde la carpeta del proyecto (fuera de OneDrive y excluida del antivirus):
-
+**Opción B — Git:**
 ```bash
-npm install      # instala Electron (solo la primera vez)
-npm start        # abre NICO
+git clone https://github.com/abdonlab/nico-desktop.git
 ```
 
-Se abren dos cosas: la **ventana de chat** (donde platicas con NICO) y el
-**lobo neón flotando** en la esquina del escritorio.
+## Primeros pasos
+Desde la carpeta del proyecto (en Windows, mejor fuera de OneDrive y excluida del antivirus):
 
-## Uso
-- Escribe en el chat y presiona **Enter** (Shift+Enter = salto de línea). NICO responde con Gemini.
-- El lobo **dice en voz alta** cada respuesta (voz del sistema en español).
-- Controles del lobo (pasa el cursor encima):
+1. Crea tu archivo de configuración a partir del ejemplo:
+   - Windows (CMD): `copy nico.config.example.js nico.config.js`
+   - Mac/Linux: `cp nico.config.example.js nico.config.js`
+2. Instala dependencias (solo la primera vez):
+   ```bash
+   npm install
+   ```
+3. Ábrelo:
+   ```bash
+   npm start
+   ```
 
+Aparece el lobo flotando en una esquina. No necesitas editar `nico.config.js` a mano: elige el
+cerebro y pega tu key desde el engranaje ⚙️ (se guarda y **sobrevive a las actualizaciones**).
+
+## Elegir el cerebro (engranaje ⚙️)
+1. Pasa el cursor sobre el lobo y pulsa **⚙️**.
+2. En **"¿Qué cerebro usa NICO?"** elige el proveedor. Los campos cambian solos:
+   - Nube → pide **API key** y **modelo** (abajo hay un enlace para sacar la key de cada servicio).
+   - Local (Ollama / LM Studio / otro) → pide la **dirección del servidor** y el **modelo**.
+3. **Aceptar**. NICO empieza a usar ese cerebro enseguida. Cada proveedor recuerda su propia key
+   y modelo, así que puedes alternar sin volver a escribir nada.
+
+Notas por proveedor:
+- **Ollama:** instálalo desde https://ollama.com y baja un modelo: `ollama pull qwen2.5:7b-instruct`.
+  NICO intenta levantar Ollama solo si no está corriendo.
+- **LM Studio:** carga un modelo y enciende el servidor (pestaña *Developer → Start Server*,
+  por defecto `http://localhost:1234/v1`). Deja el modelo vacío para usar el que tengas cargado.
+- **Otro (compatible con OpenAI):** sirve para Groq, Together, Mistral, xAI, llama.cpp, vLLM, Jan…
+  solo pon su URL (`…/v1`), el modelo y la key si la pide.
+
+## Controles del lobo (pasa el cursor encima)
 | Botón | Acción |
 |------|--------|
-| 💬 | Mostrar / ocultar el chat |
-| ▶ | Prueba de voz |
+| 🔊 | Silenciar / activar la voz |
+| ⚙️ | Configuración (cerebro, conocimiento, actualizaciones) |
+| – | Minimizar (se esconde en la bandeja / Dock) |
+| 🎲 | ¡Sorpréndeme! (animación aleatoria) |
 | 📌 | Fijar / quitar "siempre encima" |
 | 👻 | Modo fantasma: los clics atraviesan el lobo |
 | ✕ | Cerrar |
 
-## Usar IA local con Ollama (sin internet, gratis)
-Ideal para el stand: NICO responde sin conexión ni costo.
+Escribe abajo y presiona **Enter**. El lobo dice la respuesta en voz alta (en Mac usa la voz del
+sistema en español; en Windows la voz del navegador).
 
-1. Instala Ollama: https://ollama.com/download
-2. Descarga un modelo (en una terminal):
+## Darle conocimiento a NICO (RAG) 📚 — desde la app
+Haz que NICO responda con **tus documentos** (historia de la UMSNH, carreras, info del Tianguis,
+folletos, reglamentos…). Ya **no hace falta usar la terminal**:
 
-   ```bash
-   ollama pull llama3.2
-   ```
+1. Abre **⚙️** → sección **"Conocimiento de NICO"**.
+2. **📄 Elegir documentos** → selecciona PDF, Word (.docx), Markdown (.md), texto (.txt) o HTML.
+3. **Vectorizar y usar**. NICO lee, trocea y vectoriza los documentos y empieza a usarlos al instante.
+   El conocimiento se guarda en tu carpeta de usuario, así que **sobrevive a las actualizaciones**.
 
-3. En `nico.config.js` cambia el proveedor:
+Para vectorizar se necesitan *embeddings*. NICO elige el motor disponible automáticamente, sin
+importar el cerebro de chat que uses: **Gemini** (si pusiste su key), **Ollama** o **LM Studio**
+local, u **OpenAI** / *Otro compatible*. (Claude, DeepSeek, OpenRouter y Perplexity no ofrecen
+embeddings: con esos, basta tener también una key de Gemini u OpenAI, o un modelo local.)
 
-   ```js
-   PROVIDER: 'ollama',
-   OLLAMA_MODEL: 'llama3.2',   // o el modelo que hayas descargado
-   ```
+> Alternativa por terminal (opcional): pon archivos en una carpeta `conocimiento/` y corre
+> `npm run indexar`. Si vas a hacer el instalador, córrelo **antes** de `npm run dist`.
 
-4. Deja Ollama corriendo (`ollama serve`, o simplemente abre la app de Ollama)
-   y arranca NICO. Listo — ahora piensa localmente.
+## Actualizaciones
+En **⚙️ → Actualizaciones → 🔄 Buscar en GitHub**, NICO compara tu versión con la del repo
+`abdonlab/nico-desktop` y, si hay una más nueva, te ofrece abrirla en GitHub para descargarla.
 
-Para volver a la nube, pon `PROVIDER: 'gemini'`.
+## Crear el instalador (doble clic, sin terminal)
+Con tu cerebro ya elegido:
+```bash
+npm install      # electron + electron-builder (primera vez)
+npm run dist     # genera el instalador
+```
 
-## Darle conocimiento a NICO (RAG) 📚
-Haz que NICO responda con **tus documentos** (historia de la UMSNH, carreras,
-info del Tianguis, folletos, reglamentos…) en vez de solo lo que el modelo sepa.
+### Windows
+Queda en `dist/` como **`NICO-Setup.exe`**. Ábrelo para instalar (crea icono en el menú Inicio y
+el escritorio). La primera vez Windows dirá *"Windows protegió tu PC"* → **Más información →
+Ejecutar de todas formas** (normal en apps sin certificado de pago).
+> El build necesita **Node 22**. Con Node viejo verás avisos `EBADENGINE` y puede fallar.
 
-1. Crea una carpeta **`conocimiento/`** dentro del proyecto y mete ahí tus archivos:
-   **PDF, Word (.docx), Markdown (.md), texto (.txt) o HTML (.html)**.
-   Para info de una página web, copia el texto y pégalo en un `.txt`.
-2. Genera el índice (una sola vez, y cada vez que cambies los documentos):
-
-   ```bash
-   npm run indexar
-   ```
-
-   Esto crea `conocimiento.json`. Usa el **mismo cerebro** de tu `nico.config.js`:
-   - Con `PROVIDER: 'gemini'` → necesita internet y tu API key.
-   - Con `PROVIDER: 'ollama'` → primero descarga el modelo de embeddings:
-
-     ```bash
-     ollama pull nomic-embed-text
-     ```
-
-3. Abre NICO (`npm start`) y pregúntale sobre tus documentos. Él busca los
-   fragmentos más relevantes y responde con esa información.
-
-Ajustes en `nico.config.js` (sección RAG): `RAG_ENABLED` (apagar/encender),
-`RAG_TOP_K` (cuántos fragmentos usa), `RAG_MIN_SCORE` (qué tan estricto).
-
-> Si vas a hacer el `.exe`, corre `npm run indexar` **antes** de `npm run dist`
-> para que el conocimiento quede incluido en la app.
+### Mac (Apple Silicon)
+Queda en `dist/` (`NICO-…-arm64.dmg` y `NICO.app`). La config ya incluye **firma ad-hoc**
+(`identity: null`) y un paso que limpia la cuarentena, necesario para abrir en M1/M2/M3.
+Copia `NICO.app` a **Aplicaciones**. Si dijera *"NICO está dañada"*:
+```bash
+xattr -cr /ruta/a/NICO.app
+```
+(o clic derecho → Abrir → Abrir). Si tenías una versión vieja, bórrala y usa la nueva.
 
 ## Cambiar la imagen del avatar
-1. Reemplaza **`src/nico.png`** por tu imagen (mismo nombre, fondo transparente
-   para el efecto flotante). Si usas otro nombre, cámbialo también en
-   `src/index.html` (`<img src="nico.png">`).
-2. Los **ojos que brillan** están alineados a la imagen actual. Si tu nueva
-   imagen tiene los ojos en otro lugar, ajusta en `src/index.html` los
-   porcentajes de `.eyeglow.left` y `.eyeglow.right`, o borra esas dos líneas
-   `<span class="eyeglow ...">` si no las quieres.
-3. Para el ícono del `.exe`, reemplaza también `build/icon.ico` (imagen cuadrada).
+1. Reemplaza **`src/nico.png`** por tu imagen (mismo nombre, fondo transparente).
+2. Los **ojos que brillan** están alineados a la imagen actual; ajusta en `src/index.html` los
+   porcentajes de `.eyeglow.left` / `.eyeglow.right` si tu imagen tiene los ojos en otro lugar.
+3. Para el icono del instalador, reemplaza `build/icon.ico` (Windows) y `build/icon.png` (Mac).
 
 ## Estructura
 ```
 nico-desktop/
 ├── package.json
-├── nico.config.js   # << tu API key, modelo, personalidad y opciones RAG
-├── main.js          # proceso principal: ventanas + llamada a Gemini/Ollama + RAG
-├── preload.js       # puente seguro
-├── rag.js           # búsqueda de conocimiento (embeddings + similitud)
-├── indexar.js       # genera conocimiento.json (npm run indexar)
-├── conocimiento/    # << aquí pones tus PDF, Word, .md, .txt, .html
-├── conocimiento.json# índice generado (no editar a mano)
+├── nico.config.example.js  # plantilla de configuración (cópiala a nico.config.js)
+├── nico.config.js          # << tu config (NO se sube a GitHub); la app igual se configura desde ⚙️
+├── main.js                 # proceso principal: ventana + cerebros (todos los proveedores) + RAG
+├── preload.js              # puente seguro
+├── rag.js                  # conocimiento: lectura de documentos, embeddings y similitud
+├── indexar.js              # genera conocimiento.json por terminal (opcional)
+├── build/afterPack.js      # firma ad-hoc en Mac
 └── src/
-    ├── index.html   # el avatar (lobo) y sus animaciones
-    ├── renderer.js  # lógica del avatar (voz, brillo)
-    ├── chat.html    # interfaz del chat
-    ├── chat.js      # lógica del chat
-    └── nico.png     # imagen del avatar
+    ├── index.html          # avatar + chat + panel de configuración ⚙️
+    ├── renderer.js         # lógica del avatar, chat y configuración
+    ├── fonts/              # fuentes empaquetadas (funcionan sin internet)
+    └── nico.png            # imagen del avatar
 ```
 
-## Notas
-- El historial de la conversación se envía a Gemini para que NICO recuerde el
-  contexto dentro de la misma sesión.
-- Si ves "Falta tu API key": no la pegaste en `nico.config.js`.
-- Si ves "Error de la API (400/403)": revisa que la key y el `MODEL` sean correctos.
-
-## Crear el ejecutable (.exe) para el escritorio
-Para tener un `NICO.exe` que abras con doble clic, sin terminal:
-
-1. Pega tu API key en `nico.config.js` (paso de arriba).
-2. En la carpeta del proyecto:
-
-   ```bash
-   npm install       # trae electron y electron-builder
-   npm run dist      # genera el ejecutable
-   ```
-
-3. El resultado queda en la carpeta **`dist/`**, como **`NICO.exe`** (portátil).
-   Cópialo a tu Escritorio o crea un acceso directo (clic derecho → Enviar a → Escritorio).
-
-Junto al ejecutable, en `dist/win-unpacked/resources/nico.config.js`, puedes
-cambiar la API key después sin recompilar (si usas la versión portátil, la
-config viaja dentro; para editarla suelta, usa el build de carpeta:
-`npx electron-builder --dir`).
-
-> El `.exe` no está firmado digitalmente, así que la primera vez Windows
-> mostrará "Windows protegió tu PC" → haz clic en **Más información → Ejecutar
-> de todas formas**. Es normal en apps sin certificado de pago.
-
-### En Mac (Apple Silicon)
-La config ya incluye **firma ad-hoc** (`identity: null`), necesaria para que la
-app abra en chips M1/M2/M3. Genera y abre así:
-
-```bash
-npm run dist
-```
-
-El resultado queda en `dist/` (`NICO-…-arm64.dmg` y `NICO.app`).
-Si al abrir dice **"NICO está dañada"** o **"no se puede verificar"**, quítale la
-marca de cuarentena una vez:
-
-```bash
-xattr -cr /ruta/a/NICO.app
-```
-
-(o abre con **clic derecho → Abrir → Abrir**). Si ya tenías una versión vieja
-sin firmar, bórrala y usa la nueva.
+## Problemas comunes
+- **"Falta tu API key …"**: ábre ⚙️ y pégala en el cerebro elegido.
+- **"Tu API key parece inválida"**: revisa que la key y el nombre del **modelo** sean correctos.
+- **"No pude conectar con … (servidor local)"**: enciende Ollama (`ollama serve`) o el servidor de
+  LM Studio antes de preguntar.
+- **El historial** de la conversación se envía al modelo para mantener el contexto dentro de la sesión.
