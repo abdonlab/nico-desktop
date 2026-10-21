@@ -10,11 +10,67 @@ const fs = require('fs');
 const path = require('path');
 
 // ---------- Embeddings ----------
-// Convierte un texto en un vector numérico usando el proveedor de cfg.
+// Para vectorizar el conocimiento se necesita un motor de "embeddings". No todos
+// los cerebros lo tienen (Claude, Perplexity, DeepSeek no ofrecen embeddings), así
+// que NICO elige automáticamente el mejor disponible, SIN importar qué cerebro de
+// chat estés usando:
+//   1) Gemini, si pusiste tu API key de Gemini (embeddings gratis y de calidad).
+//   2) Local: Ollama, LM Studio u "otro local" según el cerebro elegido.
+//   3) OpenAI / "Otro (compatible OpenAI)" en la nube, si hay key.
+//   4) Último recurso: Ollama local (localhost).
 async function embedText(text, cfg) {
-  const provider = (cfg.PROVIDER || 'gemini').toLowerCase();
-  if (provider === 'ollama') return embedOllama(text, cfg);
-  return embedGemini(text, cfg);
+  const prov = (cfg.PROVIDER || 'gemini').toLowerCase();
+  const gkey = (cfg.GEMINI_API_KEY || '').trim();
+  const hasGemini = gkey && !gkey.includes('PEGA_AQUI');
+
+  // 1) Gemini si hay key (vale para cualquier cerebro de chat)
+  if (hasGemini) {
+    try { return await embedGemini(text, cfg); }
+    catch (e) { if (prov === 'gemini') throw e; /* si falla, sigue probando */ }
+  }
+  // 2) Cerebros locales
+  if (prov === 'ollama') return embedOllama(text, cfg);
+  if (prov === 'lmstudio') {
+    return embedOpenAICompat(text, {
+      base: cfg.LMSTUDIO_URL || 'http://localhost:1234/v1',
+      key: cfg.LMSTUDIO_API_KEY || 'lm-studio',
+      model: cfg.EMBED_MODEL_OAI || 'text-embedding-nomic-embed-text-v1.5'
+    });
+  }
+  if (prov === 'customlocal') {
+    return embedOpenAICompat(text, {
+      base: cfg.CUSTOMLOCAL_URL || '',
+      key: cfg.CUSTOMLOCAL_API_KEY || '',
+      model: cfg.EMBED_MODEL_OAI || 'text-embedding-3-small'
+    });
+  }
+  // 3) OpenAI / Otro (compatible OpenAI) en la nube, si tienen key
+  const oai = oaiEmbedConfig(cfg, prov);
+  if (oai && oai.key && oai.base) return embedOpenAICompat(text, oai);
+
+  // 4) Último recurso: Ollama local
+  return embedOllama(text, cfg);
+}
+
+// Config de embeddings para proveedores compatibles con OpenAI que SÍ ofrecen embeddings.
+function oaiEmbedConfig(cfg, prov) {
+  if (prov === 'openai') return { base: 'https://api.openai.com/v1', key: (cfg.OPENAI_API_KEY || '').trim(), model: cfg.EMBED_MODEL_OAI || 'text-embedding-3-small' };
+  if (prov === 'custom') return { base: (cfg.CUSTOM_URL || '').trim(), key: (cfg.CUSTOM_API_KEY || '').trim(), model: cfg.EMBED_MODEL_OAI || 'text-embedding-3-small' };
+  return null; // anthropic, deepseek, openrouter, perplexity no tienen embeddings fiables
+}
+
+// Embeddings por API estilo OpenAI (/embeddings). Sirve para OpenAI, LM Studio, etc.
+async function embedOpenAICompat(text, opts) {
+  const base = String(opts.base || '').replace(/\/$/, '');
+  if (!base) throw new Error('Para vectorizar necesito la dirección del servidor de embeddings.');
+  const r = await fetch(base + '/embeddings', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, opts.key ? { 'Authorization': `Bearer ${opts.key}` } : {}),
+    body: JSON.stringify({ model: opts.model || 'text-embedding-3-small', input: String(text || '') })
+  });
+  if (!r.ok) throw new Error(`Embeddings error ${r.status}: ${await r.text()}`);
+  const data = await r.json();
+  return (data && data.data && data.data[0] && data.data[0].embedding) || [];
 }
 
 // Detecta automáticamente un modelo de embeddings válido para esta API key
@@ -87,9 +143,19 @@ function cosineSim(a, b) {
 let KNOWLEDGE = [];   // [{ text, source, vector }]
 let LOADED = false;
 
-// Busca conocimiento.json junto al .exe (resources) o junto a rag.js (dev).
+// Carpeta de datos del usuario (userData): ahí se guarda el conocimiento que
+// subes desde la app, para que persista y sobreviva a las actualizaciones.
+let USER_DIR = null;
+function setUserDir(d) { USER_DIR = d || null; }
+function knowledgeOutPath() {
+  if (USER_DIR) { try { fs.mkdirSync(USER_DIR, { recursive: true }); } catch (e) {} return path.join(USER_DIR, 'conocimiento.json'); }
+  return path.join(__dirname, 'conocimiento.json');
+}
+// Busca conocimiento.json: primero el del usuario (userData), luego junto al
+// .exe (resources) y por último junto a rag.js (dev).
 function findKnowledgeFile() {
   const candidates = [
+    USER_DIR ? path.join(USER_DIR, 'conocimiento.json') : null,
     process.resourcesPath ? path.join(process.resourcesPath, 'conocimiento.json') : null,
     path.join(__dirname, 'conocimiento.json')
   ].filter(Boolean);
@@ -146,4 +212,74 @@ async function retrieve(query, cfg) {
 // Olvida el modelo de embeddings detectado (para re-detectar si cambió la API key).
 function resetEmbedModel() { RESOLVED_EMBED_GEMINI = null; }
 
-module.exports = { embedText, cosineSim, loadKnowledge, isReady, retrieve, resetEmbedModel };
+// ---------- Lectura de documentos (PDF, Word, Markdown, texto, HTML) ----------
+function stripHtml(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ').trim();
+}
+async function leerDocumento(file) {
+  const ext = path.extname(file).toLowerCase();
+  if (ext === '.pdf')  { const pdf = require('pdf-parse'); const d = await pdf(fs.readFileSync(file)); return d.text || ''; }
+  if (ext === '.docx') { const m = require('mammoth'); const r = await m.extractRawText({ path: file }); return r.value || ''; }
+  if (ext === '.html' || ext === '.htm') return stripHtml(fs.readFileSync(file, 'utf8'));
+  if (ext === '.md' || ext === '.txt' || ext === '.markdown') return fs.readFileSync(file, 'utf8');
+  return null;
+}
+// ---------- Fragmentación ----------
+function fragmentar(texto, cfg) {
+  const CHUNK = (cfg && cfg.RAG_CHUNK_CHARS) || 1200;
+  const OVERLAP = (cfg && cfg.RAG_CHUNK_OVERLAP) || 200;
+  const limpio = String(texto || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').trim();
+  if (!limpio) return [];
+  const partes = []; let i = 0;
+  while (i < limpio.length) {
+    let fin = Math.min(i + CHUNK, limpio.length);
+    if (fin < limpio.length) {
+      const ventana = limpio.slice(fin - 120, fin);
+      const corte = Math.max(ventana.lastIndexOf('. '), ventana.lastIndexOf('\n'));
+      if (corte > 0) fin = fin - 120 + corte + 1;
+    }
+    const frag = limpio.slice(i, fin).trim();
+    if (frag.length > 30) partes.push(frag);
+    i = fin - OVERLAP; if (i < 0) i = 0;
+    if (fin >= limpio.length) break;
+  }
+  return partes;
+}
+// ---------- Vectoriza una lista de archivos y GUARDA el conocimiento ----------
+// Reemplaza el conocimiento anterior por el de estos documentos.
+async function indexFiles(files, cfg, onProgress) {
+  files = (files || []).filter(Boolean);
+  if (!files.length) throw new Error('No elegiste documentos.');
+  const pend = []; const leidos = [];
+  for (const f of files) {
+    let txt;
+    try { txt = await leerDocumento(f); } catch (e) { continue; }
+    if (txt == null) continue;
+    const frags = fragmentar(txt, cfg);
+    frags.forEach(t => pend.push({ text: t, source: path.basename(f) }));
+    if (frags.length) leidos.push(path.basename(f));
+  }
+  if (!pend.length) throw new Error('No se pudo extraer texto de los documentos.');
+  const chunks = [];
+  for (let i = 0; i < pend.length; i++) {
+    try {
+      const v = await embedText(pend[i].text, cfg);
+      if (v && v.length) chunks.push({ text: pend[i].text, source: pend[i].source, vector: v });
+    } catch (e) { if (!chunks.length) throw e; }
+    if (onProgress) { try { onProgress(i + 1, pend.length); } catch (_) {} }
+  }
+  if (!chunks.length) throw new Error('No se generaron embeddings.');
+  fs.writeFileSync(knowledgeOutPath(), JSON.stringify({ creado: new Date().toISOString(), proveedor: (cfg.PROVIDER || 'gemini'), chunks }));
+  loadKnowledge();
+  return { count: chunks.length, sources: [...new Set(chunks.map(c => c.source))], files: leidos };
+}
+
+module.exports = {
+  embedText, cosineSim, loadKnowledge, isReady, retrieve, resetEmbedModel,
+  setUserDir, leerDocumento, fragmentar, indexFiles
+};

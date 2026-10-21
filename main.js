@@ -227,13 +227,91 @@ ${context}
   }
 }
 
-// Selecciona el proveedor según nico.config.js: 'gemini' (nube) u 'ollama' (local).
+// Selecciona el proveedor. Nube: gemini, openai, anthropic, deepseek, openrouter,
+// perplexity, custom (compatible OpenAI). Local: ollama, lmstudio, customlocal.
 ipcMain.handle('nico:ask', async (_e, messages) => {
   const provider = (cfg.PROVIDER || 'gemini').toLowerCase();
-  const systemPrompt = await construirSystemPrompt(messages);
-  if (provider === 'ollama') return askOllama(messages, systemPrompt);
-  return askGemini(messages, systemPrompt);
+  const sp = await construirSystemPrompt(messages);
+  switch (provider) {
+    case 'ollama':      return askOllama(messages, sp);
+    case 'anthropic':   return askAnthropic(messages, sp);
+    case 'openai':      return askOpenAICompatible(messages, sp, { base: 'https://api.openai.com/v1',     key: (cfg.OPENAI_API_KEY || '').trim(),     model: cfg.OPENAI_MODEL || 'gpt-4o-mini',          label: 'OpenAI',     needKey: true });
+    case 'deepseek':    return askOpenAICompatible(messages, sp, { base: 'https://api.deepseek.com/v1',   key: (cfg.DEEPSEEK_API_KEY || '').trim(),   model: cfg.DEEPSEEK_MODEL || 'deepseek-chat',      label: 'DeepSeek',   needKey: true });
+    case 'openrouter':  return askOpenAICompatible(messages, sp, { base: 'https://openrouter.ai/api/v1',  key: (cfg.OPENROUTER_API_KEY || '').trim(), model: cfg.OPENROUTER_MODEL || 'openai/gpt-4o-mini', label: 'OpenRouter', needKey: true, extraHeaders: { 'HTTP-Referer': 'https://github.com/abdonlab/nico-desktop', 'X-Title': 'NICO' } });
+    case 'perplexity':  return askOpenAICompatible(messages, sp, { base: 'https://api.perplexity.ai',     key: (cfg.PERPLEXITY_API_KEY || '').trim(), model: cfg.PERPLEXITY_MODEL || 'sonar',            label: 'Perplexity', needKey: true });
+    case 'custom':      return askOpenAICompatible(messages, sp, { base: (cfg.CUSTOM_URL || '').trim(),    key: (cfg.CUSTOM_API_KEY || '').trim(),     model: (cfg.CUSTOM_MODEL || '').trim(),            label: 'tu servicio', needKey: false });
+    case 'lmstudio':    return askOpenAICompatible(messages, sp, { base: (cfg.LMSTUDIO_URL || 'http://localhost:1234/v1').trim(), key: (cfg.LMSTUDIO_API_KEY || 'lm-studio').trim(), model: (cfg.LMSTUDIO_MODEL || '').trim(), label: 'LM Studio', needKey: false });
+    case 'customlocal': return askOpenAICompatible(messages, sp, { base: (cfg.CUSTOMLOCAL_URL || '').trim(), key: (cfg.CUSTOMLOCAL_API_KEY || '').trim(), model: (cfg.CUSTOMLOCAL_MODEL || '').trim(),      label: 'tu servidor local', needKey: false });
+    default:            return askGemini(messages, sp);
+  }
 });
+
+// ---- Cerebros compatibles con OpenAI (ChatGPT, DeepSeek, OpenRouter, Perplexity,
+//      LM Studio, "Otro"…). Todos hablan el mismo formato: /chat/completions. ----
+async function askOpenAICompatible(messages, systemPrompt, opts) {
+  const base = String(opts.base || '').replace(/\/$/, '');
+  if (!base) return { ok: false, reply: `Falta la dirección del servidor de ${opts.label}. Abre el engranaje ⚙️ y escríbela.` };
+  if (opts.needKey && !opts.key) return { ok: false, reply: `Falta tu API key de ${opts.label}. Abre el engranaje ⚙️ y pégala.` };
+  const url = base + '/chat/completions';
+  const msgs = [{ role: 'system', content: systemPrompt || cfg.SYSTEM_PROMPT || 'Eres NICO.' }]
+    .concat((messages || []).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text || '') })));
+  const body = { messages: msgs, max_tokens: 800, temperature: 0.9, stream: false };
+  if (opts.model) body.model = opts.model;
+  const headers = { 'Content-Type': 'application/json' };
+  if (opts.key) headers['Authorization'] = `Bearer ${opts.key}`;
+  if (opts.extraHeaders) Object.assign(headers, opts.extraHeaders);
+  try {
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!r.ok) {
+      const t = await r.text();
+      console.error(opts.label, 'error', r.status, t);
+      if (r.status === 401 || r.status === 403) return { ok: false, reply: `Tu API key de ${opts.label} parece inválida. Revísala en el engranaje ⚙️.` };
+      if (r.status === 404) return { ok: false, reply: `No encontré el modelo "${opts.model || ''}" en ${opts.label}. Revisa el nombre en ⚙️.` };
+      if (r.status === 429) return { ok: false, reply: 'Límite de uso alcanzado; espera un momento.' };
+      return { ok: false, reply: `Error de ${opts.label} (${r.status}).` };
+    }
+    const data = await r.json();
+    const text = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
+      || (data && data.choices && data.choices[0] && data.choices[0].text)
+      || '(sin respuesta)';
+    return { ok: true, reply: typeof text === 'string' ? text : '(sin respuesta)' };
+  } catch (err) {
+    console.error(err);
+    const local = /localhost|127\.0\.0\.1/.test(base);
+    return { ok: false, reply: local
+      ? `No pude conectar con ${opts.label}. ¿Está encendido el servidor local?`
+      : `No pude conectar con ${opts.label}. ¿Hay internet?` };
+  }
+}
+
+// ---- Claude (Anthropic): tiene su propio formato (/v1/messages) ----
+async function askAnthropic(messages, systemPrompt) {
+  const key = (cfg.ANTHROPIC_API_KEY || '').trim();
+  if (!key) return { ok: false, reply: 'Falta tu API key de Claude (Anthropic). Abre el engranaje ⚙️ y pégala.' };
+  const model = (cfg.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest').trim();
+  const msgs = (messages || []).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text || '') }));
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, system: systemPrompt || cfg.SYSTEM_PROMPT || 'Eres NICO.', messages: msgs, max_tokens: 800 })
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      console.error('Anthropic error', r.status, t);
+      if (r.status === 401 || r.status === 403) return { ok: false, reply: 'Tu API key de Claude parece inválida. Revísala en el engranaje ⚙️.' };
+      if (r.status === 404) return { ok: false, reply: `No encontré el modelo "${model}". Revisa el nombre en ⚙️.` };
+      if (r.status === 429) return { ok: false, reply: 'Límite de uso alcanzado; espera un momento.' };
+      return { ok: false, reply: `Error de Claude (${r.status}).` };
+    }
+    const data = await r.json();
+    const text = (data && Array.isArray(data.content) ? data.content.map(b => b.text || '').join('') : '') || '(sin respuesta)';
+    return { ok: true, reply: text };
+  } catch (err) {
+    console.error(err);
+    return { ok: false, reply: 'No pude conectar con Claude (Anthropic). ¿Hay internet?' };
+  }
+}
 
 // ---- Ollama (IA local, sin internet) ----
 async function askOllama(messages, systemPrompt) {
@@ -318,25 +396,46 @@ ipcMain.on('nico:toggle-pin', (_e, pinned) => { if (avatarWin) avatarWin.setAlwa
 ipcMain.on('nico:click-through', (_e, ignore) => { if (avatarWin) avatarWin.setIgnoreMouseEvents(!!ignore, { forward: true }); });
 
 // ---- Configuración desde el engranaje ⚙️ ----
+// Cerebros válidos (nube + local).
+const PROVIDERS = ['gemini', 'openai', 'anthropic', 'deepseek', 'openrouter', 'perplexity', 'custom', 'ollama', 'lmstudio', 'customlocal'];
+
+// Entrega al panel los ajustes de CADA cerebro (uno por uno), para que al cambiar
+// de cerebro no se pierda lo que ya habías escrito en otro.
 ipcMain.handle('nico:get-settings', () => {
-  const key = String(cfg.GEMINI_API_KEY || '');
+  const gk = String(cfg.GEMINI_API_KEY || '');
   return {
     provider: (cfg.PROVIDER || 'gemini').toLowerCase(),
-    geminiKey: key.includes('PEGA_AQUI') ? '' : key,
-    geminiModel: cfg.MODEL || 'gemini-2.0-flash',
-    ollamaModel: cfg.OLLAMA_MODEL || 'qwen2.5:7b-instruct',
-    ollamaUrl: cfg.OLLAMA_URL || 'http://localhost:11434'
+    gemini:     { key: gk.includes('PEGA_AQUI') ? '' : gk,   model: cfg.MODEL || 'gemini-2.0-flash' },
+    openai:     { key: cfg.OPENAI_API_KEY || '',             model: cfg.OPENAI_MODEL || 'gpt-4o-mini' },
+    anthropic:  { key: cfg.ANTHROPIC_API_KEY || '',          model: cfg.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest' },
+    deepseek:   { key: cfg.DEEPSEEK_API_KEY || '',           model: cfg.DEEPSEEK_MODEL || 'deepseek-chat' },
+    openrouter: { key: cfg.OPENROUTER_API_KEY || '',         model: cfg.OPENROUTER_MODEL || 'openai/gpt-4o-mini' },
+    perplexity: { key: cfg.PERPLEXITY_API_KEY || '',         model: cfg.PERPLEXITY_MODEL || 'sonar' },
+    custom:     { key: cfg.CUSTOM_API_KEY || '',             model: cfg.CUSTOM_MODEL || '',      url: cfg.CUSTOM_URL || '' },
+    ollama:     { model: cfg.OLLAMA_MODEL || 'qwen2.5:7b-instruct', url: cfg.OLLAMA_URL || 'http://localhost:11434' },
+    lmstudio:   { key: (cfg.LMSTUDIO_API_KEY && cfg.LMSTUDIO_API_KEY !== 'lm-studio') ? cfg.LMSTUDIO_API_KEY : '', model: cfg.LMSTUDIO_MODEL || '', url: cfg.LMSTUDIO_URL || 'http://localhost:1234/v1' },
+    customlocal:{ key: cfg.CUSTOMLOCAL_API_KEY || '',        model: cfg.CUSTOMLOCAL_MODEL || '', url: cfg.CUSTOMLOCAL_URL || 'http://localhost:8080/v1' }
   };
 });
 ipcMain.handle('nico:save-settings', (_e, s) => {
   s = s || {};
-  const provider = (String(s.provider).toLowerCase() === 'ollama') ? 'ollama' : 'gemini';
+  const provider = PROVIDERS.includes(String(s.provider).toLowerCase()) ? String(s.provider).toLowerCase() : 'gemini';
+  const T = v => String(v || '').trim();
+  const g = s.gemini || {}, o = s.openai || {}, a = s.anthropic || {}, d = s.deepseek || {},
+        orr = s.openrouter || {}, pp = s.perplexity || {}, c = s.custom || {},
+        ol = s.ollama || {}, lm = s.lmstudio || {}, cl = s.customlocal || {};
   const next = {
     PROVIDER: provider,
-    GEMINI_API_KEY: String(s.geminiKey || '').trim(),
-    MODEL: String(s.geminiModel || '').trim() || 'gemini-2.0-flash',
-    OLLAMA_MODEL: String(s.ollamaModel || '').trim() || 'qwen2.5:7b-instruct',
-    OLLAMA_URL: String(s.ollamaUrl || '').trim() || 'http://localhost:11434'
+    GEMINI_API_KEY: T(g.key),            MODEL: T(g.model) || 'gemini-2.0-flash',
+    OPENAI_API_KEY: T(o.key),            OPENAI_MODEL: T(o.model) || 'gpt-4o-mini',
+    ANTHROPIC_API_KEY: T(a.key),         ANTHROPIC_MODEL: T(a.model) || 'claude-3-5-sonnet-latest',
+    DEEPSEEK_API_KEY: T(d.key),          DEEPSEEK_MODEL: T(d.model) || 'deepseek-chat',
+    OPENROUTER_API_KEY: T(orr.key),      OPENROUTER_MODEL: T(orr.model) || 'openai/gpt-4o-mini',
+    PERPLEXITY_API_KEY: T(pp.key),       PERPLEXITY_MODEL: T(pp.model) || 'sonar',
+    CUSTOM_API_KEY: T(c.key),            CUSTOM_MODEL: T(c.model),      CUSTOM_URL: T(c.url),
+    OLLAMA_MODEL: T(ol.model) || 'qwen2.5:7b-instruct', OLLAMA_URL: T(ol.url) || 'http://localhost:11434',
+    LMSTUDIO_API_KEY: T(lm.key) || 'lm-studio', LMSTUDIO_MODEL: T(lm.model), LMSTUDIO_URL: T(lm.url) || 'http://localhost:1234/v1',
+    CUSTOMLOCAL_API_KEY: T(cl.key),      CUSTOMLOCAL_MODEL: T(cl.model), CUSTOMLOCAL_URL: T(cl.url) || 'http://localhost:8080/v1'
   };
   try {
     const dir = app.getPath('userData');
@@ -370,6 +469,28 @@ ipcMain.handle('nico:check-update', async () => {
 });
 ipcMain.handle('nico:open-update', (_e, url) => {
   try { require('electron').shell.openExternal(url || `https://github.com/${cfg.UPDATE_REPO || 'abdonlab/nico-desktop'}`); } catch (e) {}
+});
+
+// ---- Conocimiento: subir documentos y vectorizarlos desde la app ----
+ipcMain.handle('nico:pick-docs', async () => {
+  try {
+    const { dialog } = require('electron');
+    const res = await dialog.showOpenDialog(avatarWin, {
+      title: 'Elige los documentos de conocimiento',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Documentos', extensions: ['pdf', 'docx', 'md', 'markdown', 'txt', 'html', 'htm'] }]
+    });
+    return (res && !res.canceled) ? res.filePaths : [];
+  } catch (e) { console.error('pick-docs:', e.message); return []; }
+});
+ipcMain.handle('nico:index-docs', async (e, files) => {
+  try {
+    const r = await rag.indexFiles(files || [], cfg, (done, total) => {
+      try { e.sender.send('nico:index-progress', { done, total }); } catch (_) {}
+    });
+    console.log('Conocimiento vectorizado:', r.count, 'fragmentos de', (r.files || []).join(', '));
+    return { ok: true, ...r };
+  } catch (err) { console.error('index-docs:', err.message); return { ok: false, error: err.message }; }
 });
 
 // Voz del sistema en Mac con 'say'. Detecta y usa una voz de HOMBRE en español
@@ -417,10 +538,10 @@ app.whenReady().then(() => {
   createAvatarWindow();   // muestra el avatar de inmediato
   createTray();           // icono en la bandeja para recuperarlo tras minimizar
   ensureOllama();         // y en paralelo levanta Ollama si hace falta
-  try { rag.loadKnowledge(); } catch (e) { console.error('RAG init:', e.message); } // carga conocimiento.json si existe
+  try { rag.setUserDir(app.getPath('userData')); rag.loadKnowledge(); } catch (e) { console.error('RAG init:', e.message); }
 });
 app.on('window-all-closed', () => app.quit());
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createAvatarWindow(); });
+app.on('activate', () => { if (app.isReady() && BrowserWindow.getAllWindows().length === 0) createAvatarWindow(); });
 
 // Si NICO levantó Ollama, lo apaga al cerrar (si ya estaba corriendo, lo deja).
 app.on('before-quit', () => {

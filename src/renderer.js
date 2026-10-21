@@ -181,61 +181,98 @@ btnClose.addEventListener('click', () => window.nico.quit());
 // -------- Configuración (engranaje ⚙️) --------
 const btnCfg    = document.getElementById('btnCfg');
 const cfgPanel  = document.getElementById('cfgPanel');
-const segGemini = document.getElementById('segGemini');
-const segOllama = document.getElementById('segOllama');
-const cfgGemini = document.getElementById('cfgGemini');
-const cfgOllama = document.getElementById('cfgOllama');
+const cfgProv   = document.getElementById('cfgProv');
 const cfgKey    = document.getElementById('cfgKey');
-const cfgGModel = document.getElementById('cfgGModel');
-const cfgOModel = document.getElementById('cfgOModel');
-const cfgOUrl   = document.getElementById('cfgOUrl');
+const cfgModel  = document.getElementById('cfgModel');
+const cfgUrl    = document.getElementById('cfgUrl');
+const rowKey    = document.getElementById('rowKey');
+const rowModel  = document.getElementById('rowModel');
+const rowUrl    = document.getElementById('rowUrl');
+const lblKey    = document.getElementById('lblKey');
+const lblUrl    = document.getElementById('lblUrl');
+const cfgProvHint = document.getElementById('cfgProvHint');
 const cfgOk     = document.getElementById('cfgOk');
 const cfgCancel = document.getElementById('cfgCancel');
 const cfgUpdate = document.getElementById('cfgUpdate');
 const cfgUpdMsg = document.getElementById('cfgUpdMsg');
 
-let cfgProvider = 'gemini';
-function setCfgProvider(p) {
-  cfgProvider = (p === 'ollama') ? 'ollama' : 'gemini';
-  segGemini.classList.toggle('sel', cfgProvider === 'gemini');
-  segOllama.classList.toggle('sel', cfgProvider === 'ollama');
-  cfgGemini.classList.toggle('cfg-hidden', cfgProvider !== 'gemini');
-  cfgOllama.classList.toggle('cfg-hidden', cfgProvider !== 'ollama');
+// Qué campos muestra cada cerebro, con ayudas y ejemplos.
+const PROV = {
+  gemini:     { nombre:'Gemini (Google)',            key:true,  url:false, modelPH:'gemini-2.0-flash',          keyPH:'API key de Google AI Studio', ayuda:'Key gratis en aistudio.google.com', link:'https://aistudio.google.com/apikey' },
+  openai:     { nombre:'OpenAI (ChatGPT)',           key:true,  url:false, modelPH:'gpt-4o-mini',               keyPH:'sk-...',       ayuda:'Tu key: platform.openai.com/api-keys', link:'https://platform.openai.com/api-keys' },
+  anthropic:  { nombre:'Claude (Anthropic)',         key:true,  url:false, modelPH:'claude-3-5-sonnet-latest',  keyPH:'sk-ant-...',   ayuda:'Tu key: console.anthropic.com', link:'https://console.anthropic.com/settings/keys' },
+  deepseek:   { nombre:'DeepSeek',                   key:true,  url:false, modelPH:'deepseek-chat',             keyPH:'sk-...',       ayuda:'Tu key: platform.deepseek.com', link:'https://platform.deepseek.com/api_keys' },
+  openrouter: { nombre:'OpenRouter',                 key:true,  url:false, modelPH:'openai/gpt-4o-mini',        keyPH:'sk-or-...',    ayuda:'Un key = cientos de modelos: openrouter.ai/keys', link:'https://openrouter.ai/keys' },
+  perplexity: { nombre:'Perplexity',                 key:true,  url:false, modelPH:'sonar',                     keyPH:'pplx-...',     ayuda:'Tu key: perplexity.ai/settings/api', link:'https://www.perplexity.ai/settings/api' },
+  custom:     { nombre:'Otro (compatible OpenAI)',   key:true,  url:true,  modelPH:'nombre-del-modelo',         keyPH:'API key (si la pide)', urlPH:'https://tu-servicio.com/v1', ayuda:'Cualquier servicio con API estilo OpenAI (Groq, Together, Mistral, xAI…).' },
+  ollama:     { nombre:'Ollama (local)',             key:false, url:true,  modelPH:'qwen2.5:7b-instruct',       urlPH:'http://localhost:11434', ayuda:'IA local, sin internet. Descárgalo e instala un modelo:  ollama pull <modelo>', link:'https://ollama.com' },
+  lmstudio:   { nombre:'LM Studio (local)',          key:false, url:true,  modelPH:'(deja vacío = usa el cargado)', urlPH:'http://localhost:1234/v1', ayuda:'En LM Studio carga un modelo y enciende el servidor: pestaña Developer → Start Server.', link:'https://lmstudio.ai' },
+  customlocal:{ nombre:'Otro local (compatible OpenAI)', key:true, url:true, modelPH:'nombre-del-modelo',       keyPH:'API key (si la pide)', urlPH:'http://localhost:8080/v1', ayuda:'Cualquier servidor local estilo OpenAI (llama.cpp, vLLM, Jan…).' }
+};
+
+let S = {};  // ajustes completos (uno por proveedor) traídos del proceso principal
+function slot(p) { return (S[p] = S[p] || {}); }
+
+// Dibuja los campos según el cerebro elegido y rellena con lo guardado de ese cerebro.
+function pintarProv() {
+  const p = cfgProv.value || 'gemini';
+  const meta = PROV[p] || PROV.gemini;
+  rowKey.style.display = meta.key ? '' : 'none';
+  rowUrl.style.display = meta.url ? '' : 'none';
+  cfgKey.placeholder   = meta.keyPH   || 'pega aquí tu API key';
+  cfgModel.placeholder = meta.modelPH || 'modelo';
+  if (meta.url) {
+    lblUrl.textContent = (p === 'ollama') ? 'Dirección de Ollama' : 'Dirección del servidor';
+    cfgUrl.placeholder = meta.urlPH || 'http://localhost';
+  }
+  const s = slot(p);
+  cfgKey.value   = s.key   || '';
+  cfgModel.value = s.model || '';
+  cfgUrl.value   = s.url   || '';
+  cfgProvHint.innerHTML = meta.ayuda
+    ? (meta.ayuda + (meta.link ? ' <span class="prov-link" data-url="' + meta.link + '">Abrir ↗</span>' : ''))
+    : '';
+}
+
+// Guarda lo que hay en los campos dentro del cerebro activo (para no perderlo al cambiar).
+function capturarSlot() {
+  const s = slot(cfgProv.value);
+  s.key = cfgKey.value.trim();
+  s.model = cfgModel.value.trim();
+  s.url = cfgUrl.value.trim();
 }
 
 async function openCfg() {
-  let s = {};
-  try { s = (window.nico.getSettings && await window.nico.getSettings()) || {}; } catch (e) {}
-  cfgKey.value    = s.geminiKey   || '';
-  cfgGModel.value = s.geminiModel || '';
-  cfgOModel.value = s.ollamaModel || '';
-  cfgOUrl.value   = s.ollamaUrl   || '';
+  try { S = (window.nico.getSettings && await window.nico.getSettings()) || {}; } catch (e) { S = {}; }
+  cfgProv.value = S.provider || 'gemini';
+  if (!cfgProv.value) cfgProv.value = 'gemini';
   cfgUpdMsg.textContent = '';
-  setCfgProvider(s.provider || 'gemini');
+  pintarProv();
   cfgPanel.classList.add('show');
 }
 function closeCfg() { cfgPanel.classList.remove('show'); }
 
 btnCfg.addEventListener('click', openCfg);
-segGemini.addEventListener('click', () => setCfgProvider('gemini'));
-segOllama.addEventListener('click', () => setCfgProvider('ollama'));
+cfgProv.addEventListener('change', pintarProv);
+cfgKey.addEventListener('input', capturarSlot);
+cfgModel.addEventListener('input', capturarSlot);
+cfgUrl.addEventListener('input', capturarSlot);
 cfgCancel.addEventListener('click', closeCfg);
 cfgPanel.addEventListener('click', (e) => { if (e.target === cfgPanel) closeCfg(); });
+cfgProvHint.addEventListener('click', (e) => {
+  const el = e.target.closest('.prov-link');
+  if (el && el.dataset.url && window.nico.openUpdate) window.nico.openUpdate(el.dataset.url);
+});
 
 cfgOk.addEventListener('click', async () => {
-  const data = {
-    provider: cfgProvider,
-    geminiKey: cfgKey.value.trim(),
-    geminiModel: cfgGModel.value.trim(),
-    ollamaModel: cfgOModel.value.trim(),
-    ollamaUrl: cfgOUrl.value.trim()
-  };
+  capturarSlot();
+  const data = Object.assign({}, S, { provider: cfgProv.value });
   cfgOk.disabled = true;
   try { await window.nico.saveSettings(data); } catch (e) {}
   cfgOk.disabled = false;
   closeCfg();
-  const quien = cfgProvider === 'ollama' ? 'Ollama (local)' : 'Gemini (nube)';
-  showBubble('✓ Configuración guardada — ahora uso ' + quien);
+  const meta = PROV[cfgProv.value] || {};
+  showBubble('✓ Configuración guardada — ahora uso ' + (meta.nombre || cfgProv.value));
   hideTimer = setTimeout(hideBubble, 2600);
 });
 
@@ -252,6 +289,48 @@ cfgUpdate.addEventListener('click', async () => {
     if (o) o.addEventListener('click', () => window.nico.openUpdate(r.url));
   } else {
     cfgUpdMsg.textContent = 'Ya tienes la última versión (' + r.current + ').';
+  }
+});
+
+// Conocimiento: elegir documentos y vectorizarlos desde la app
+const cfgPickDocs  = document.getElementById('cfgPickDocs');
+const cfgDocsList  = document.getElementById('cfgDocsList');
+const cfgIndexDocs = document.getElementById('cfgIndexDocs');
+const cfgIdxMsg    = document.getElementById('cfgIdxMsg');
+let docsElegidos = [];
+
+function baseName(p) { return String(p).split(/[\\/]/).pop(); }
+function pintarDocs() {
+  cfgDocsList.textContent = docsElegidos.length
+    ? '📎 ' + docsElegidos.map(baseName).join(', ')
+    : 'Ningún documento elegido.';
+}
+pintarDocs();
+
+cfgPickDocs.addEventListener('click', async () => {
+  let files = [];
+  try { files = (await window.nico.pickDocs()) || []; } catch (e) {}
+  if (files.length) { docsElegidos = files; pintarDocs(); cfgIdxMsg.textContent = ''; }
+});
+
+if (window.nico && window.nico.onIndexProgress) {
+  window.nico.onIndexProgress((p) => {
+    if (p && p.total) cfgIdxMsg.textContent = 'Vectorizando… ' + p.done + '/' + p.total;
+  });
+}
+
+cfgIndexDocs.addEventListener('click', async () => {
+  if (!docsElegidos.length) { cfgIdxMsg.textContent = 'Primero elige documentos.'; return; }
+  cfgIndexDocs.disabled = true; cfgPickDocs.disabled = true;
+  cfgIdxMsg.textContent = 'Leyendo y vectorizando…';
+  let r = {};
+  try { r = await window.nico.indexDocs(docsElegidos); } catch (e) { r = { ok: false, error: e.message }; }
+  cfgIndexDocs.disabled = false; cfgPickDocs.disabled = false;
+  if (r && r.ok) {
+    cfgIdxMsg.textContent = '✓ Listo: ' + r.count + ' fragmentos. NICO ya usa este conocimiento.';
+    docsElegidos = []; pintarDocs();
+  } else {
+    cfgIdxMsg.textContent = 'Error: ' + ((r && r.error) || 'no se pudo vectorizar');
   }
 });
 

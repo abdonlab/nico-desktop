@@ -251,6 +251,18 @@
   }
   .cfg-seg button.sel { background: #22e3ff; color: #04121a; font-weight: 700; }
   .cfg-hidden { display: none; }
+  /* Selector de cerebro (desplegable con muchos proveedores) */
+  .cfg-row select {
+    width: 100%; padding: 8px 9px; font-size: 12px;
+    background: rgba(6,10,22,.9); color: #e7f2ff;
+    border: 1px solid rgba(34,227,255,.35); border-radius: 8px; outline: none;
+    font-family: 'Share Tech Mono', ui-monospace, monospace; cursor: pointer;
+  }
+  .cfg-row select:focus { border-color: rgba(34,227,255,.8); }
+  .cfg-row select optgroup { color: #9fd6ff; background: #0a0f1e; font-style: normal; }
+  .cfg-row select option { color: #e7f2ff; background: #0a0f1e; }
+  .prov-hint { font-size: 10.5px; color: #8fb4e0; line-height: 1.45; margin: -4px 0 6px; }
+  .prov-link { color: #22e3ff; cursor: pointer; text-decoration: underline; white-space: nowrap; }
   .cfg-div { height: 1px; background: rgba(122,92,255,.3); margin: 12px 0 10px; }
   #cfgUpdate {
     width: 100%; padding: 9px; font-size: 12px; cursor: pointer;
@@ -260,6 +272,16 @@
   #cfgUpdate:hover { background: rgba(122,92,255,.3); }
   #cfgUpdMsg { font-size: 11px; margin-top: 7px; line-height: 1.45; color: #9fd6ff; }
   #cfgUpdOpen { color: #22e3ff; cursor: pointer; text-decoration: underline; font-weight: 700; }
+  #cfgPickDocs, #cfgIndexDocs {
+    width: 100%; padding: 9px; font-size: 12px; cursor: pointer;
+    border-radius: 8px; margin-top: 5px;
+  }
+  #cfgPickDocs { background: rgba(122,92,255,.18); color: #cabcff; border: 1px solid rgba(122,92,255,.55); }
+  #cfgPickDocs:hover { background: rgba(122,92,255,.3); }
+  #cfgIndexDocs { background: linear-gradient(135deg,#22e3ff,#7a5cff); color: #04121a; font-weight: 700; border: none; }
+  #cfgIndexDocs:disabled, #cfgPickDocs:disabled { opacity: .5; cursor: default; }
+  #cfgDocsList { font-size: 10.5px; color: #9fd6ff; margin: 6px 0 0; line-height: 1.4; max-height: 52px; overflow-y: auto; }
+  #cfgIdxMsg { font-size: 11px; margin-top: 6px; color: #9fd6ff; line-height: 1.4; }
   .cfg-actions { display: flex; gap: 8px; margin-top: 12px; }
   .cfg-actions button {
     flex: 1; padding: 9px; font-size: 13px; font-weight: 700; cursor: pointer;
@@ -309,32 +331,45 @@
 
         <div class="cfg-row">
           <label>¿Qué cerebro usa NICO?</label>
-          <div class="cfg-seg">
-            <button type="button" id="segGemini" data-p="gemini">Gemini (nube)</button>
-            <button type="button" id="segOllama" data-p="ollama">Ollama (local)</button>
-          </div>
+          <select id="cfgProv">
+            <optgroup label="☁️  En la nube (internet)">
+              <option value="gemini">Gemini — Google</option>
+              <option value="openai">OpenAI — ChatGPT</option>
+              <option value="anthropic">Claude — Anthropic</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="openrouter">OpenRouter (muchos modelos)</option>
+              <option value="perplexity">Perplexity</option>
+              <option value="custom">Otro (compatible con OpenAI)</option>
+            </optgroup>
+            <optgroup label="💻  En tu computadora (local)">
+              <option value="ollama">Ollama</option>
+              <option value="lmstudio">LM Studio</option>
+              <option value="customlocal">Otro local (compatible con OpenAI)</option>
+            </optgroup>
+          </select>
         </div>
 
-        <div id="cfgGemini">
-          <div class="cfg-row">
-            <label>API Key de Gemini</label>
-            <input id="cfgKey" type="password" placeholder="pega aquí tu API key" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="cfg-row">
-            <label>Modelo</label>
-            <input id="cfgGModel" type="text" placeholder="gemini-2.0-flash" autocomplete="off" spellcheck="false" />
-          </div>
+        <div class="cfg-row" id="rowKey">
+          <label id="lblKey">API Key</label>
+          <input id="cfgKey" type="password" placeholder="pega aquí tu API key" autocomplete="off" spellcheck="false" />
         </div>
+        <div class="cfg-row" id="rowModel">
+          <label>Modelo</label>
+          <input id="cfgModel" type="text" placeholder="modelo" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="cfg-row" id="rowUrl">
+          <label id="lblUrl">Dirección del servidor</label>
+          <input id="cfgUrl" type="text" placeholder="http://localhost:1234/v1" autocomplete="off" spellcheck="false" />
+        </div>
+        <div id="cfgProvHint" class="prov-hint"></div>
 
-        <div id="cfgOllama">
-          <div class="cfg-row">
-            <label>Modelo local</label>
-            <input id="cfgOModel" type="text" placeholder="qwen2.5:7b-instruct" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="cfg-row">
-            <label>Dirección de Ollama</label>
-            <input id="cfgOUrl" type="text" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" />
-          </div>
+        <div class="cfg-div"></div>
+        <div class="cfg-row">
+          <label>Conocimiento de NICO (sus documentos)</label>
+          <button type="button" id="cfgPickDocs">📄 Elegir documentos</button>
+          <div id="cfgDocsList"></div>
+          <button type="button" id="cfgIndexDocs">Vectorizar y usar</button>
+          <div id="cfgIdxMsg"></div>
         </div>
 
         <div class="cfg-div"></div>
